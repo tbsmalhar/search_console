@@ -31,12 +31,12 @@ if not os.path.exists("credentials.json"):
     st.stop()
 
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
-REDIRECT_URI = "https://searchconsole-3ejmsvmkepncrvgerxn8wu.streamlit.app"
+REDIRECT_URI = "http://localhost:8501"  # update this to match your deployment URL if hosted
 
 if st.sidebar.button("🔄 Disconnect Google Account"):
     if os.path.exists("token.json"):
         os.remove("token.json")
-    st.experimental_rerun()
+    st.rerun()
 
 creds = None
 if os.path.exists("token.json"):
@@ -47,28 +47,37 @@ if not creds or not creds.valid:
         creds.refresh(Request())
     else:
         if "auth_flow" not in st.session_state:
-            flow = Flow.from_client_secrets_file("credentials.json", scopes=SCOPES, redirect_uri=REDIRECT_URI)
-            auth_url, _ = flow.authorization_url(prompt='consent', include_granted_scopes='true')
+            flow = Flow.from_client_secrets_file(
+                "credentials.json",
+                scopes=SCOPES,
+                redirect_uri=REDIRECT_URI
+            )
+            auth_url, _ = flow.authorization_url(
+                prompt='consent',
+                include_granted_scopes='true'
+            )
             st.session_state.auth_flow = flow
-            st.sidebar.markdown(f"🔗 [Click here to connect Google Account]({auth_url})")
+            st.sidebar.markdown(f"[Click here to connect Google Account]({auth_url})")
             st.sidebar.info("After authorizing, return to this app.")
             st.stop()
 
-        query_params = st.experimental_get_query_params()
-        auth_code = query_params.get("code", [None])[0]
+        import urllib.parse
 
-        if auth_code:
-            try:
-                st.session_state.auth_flow.fetch_token(code=auth_code)
-                creds = st.session_state.auth_flow.credentials
-                with open("token.json", "w") as token:
-                    token.write(creds.to_json())
-                st.success("✅ Successfully connected to Google Search Console!")
-                st.experimental_rerun()
-            except Exception as e:
-                st.error(f"❌ Authentication failed: {e}")
-                del st.session_state["auth_flow"]
-                st.stop()
+        query_string = urllib.parse.urlencode(st.query_params, doseq=True)
+        redirect_url = f"{REDIRECT_URI}?{query_string}"
+
+        try:
+            st.session_state.auth_flow.fetch_token(authorization_response=redirect_url)
+            creds = st.session_state.auth_flow.credentials
+            with open("token.json", "w") as token:
+                token.write(creds.to_json())
+            st.success("✅ Successfully connected to Google Search Console!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Authentication failed: {e}")
+            del st.session_state["auth_flow"]
+            st.stop()
+
         else:
             st.warning("Waiting for Google authorization...")
             st.stop()
