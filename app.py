@@ -58,21 +58,28 @@ if not code:
         prompt='consent',
         include_granted_scopes='true'
     )
-    st.sidebar.markdown(f"[Click here to connect Google Account]({auth_url})")
+    st.sidebar.markdown(f"[🔗 Click here to connect Google Account]({auth_url})")
     st.sidebar.info("After authorizing, return to this app.")
     st.stop()
 else:
     try:
+        # Rebuild flow again with the same redirect URI
         flow = Flow.from_client_secrets_file(
             "credentials.json",
             scopes=SCOPES,
             redirect_uri=REDIRECT_URI
         )
-        # restore the same state
-        flow.fetch_token(authorization_response=st.query_params.url)
+
+        # Rebuild full URL with code and state
+        full_redirect_url = REDIRECT_URI + "?" + urllib.parse.urlencode(query_params, doseq=True)
+
+        # Now fetch the token using the full URL
+        flow.fetch_token(authorization_response=full_redirect_url)
+
         creds = flow.credentials
         with open("token.json", "w") as token:
             token.write(creds.to_json())
+
         st.success("✅ Successfully connected to Google Search Console!")
         st.rerun()
     except Exception as e:
