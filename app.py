@@ -49,14 +49,22 @@ if not creds or not creds.valid:
         creds.refresh(Request())
     else:
         if st.sidebar.button("🔗 Connect to Google"):
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            creds = flow.run_local_server(port=0)
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
-            st.experimental_rerun()
-        else:
-            st.warning("Click 'Connect to Google' to continue.")
-            st.stop()
+        flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+auth_url, _ = flow.authorization_url(prompt='consent')
+
+st.markdown(f"🔐 [Click here to connect Google Account]({auth_url})")
+auth_code = st.text_input("🔑 Paste the authorization code here:")
+
+if auth_code:
+    flow.fetch_token(code=auth_code)
+    creds = flow.credentials
+    with open("token.json", "w") as token:
+        token.write(creds.to_json())
+    st.success("✅ Connected to Google Search Console!")
+    st.experimental_rerun()
+else:
+    st.warning("Paste the code you get after authenticating.")
+    st.stop()
 
 
 # === Build GSC Service ===
