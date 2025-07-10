@@ -4,7 +4,7 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from collections import defaultdict
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from dateutil import relativedelta
@@ -31,14 +31,12 @@ if not os.path.exists("credentials.json"):
     st.stop()
 
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
+REDIRECT_URI = "https://searchconsole-3ejmsvmkepncrvgerxn8wu.streamlit.app"
 
 if st.sidebar.button("🔄 Disconnect Google Account"):
     if os.path.exists("token.json"):
         os.remove("token.json")
-    try:
-        st.experimental_rerun()
-    except AttributeError:
-        st.warning("Please manually refresh the page.")
+    st.experimental_rerun()
 
 creds = None
 if os.path.exists("token.json"):
@@ -48,17 +46,16 @@ if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else:
-        # Step 1: Begin flow if not already started
         if "auth_flow" not in st.session_state:
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            auth_url, _ = flow.authorization_url(prompt='consent')
+            flow = Flow.from_client_secrets_file("credentials.json", scopes=SCOPES, redirect_uri=REDIRECT_URI)
+            auth_url, _ = flow.authorization_url(prompt='consent', include_granted_scopes='true')
             st.session_state.auth_flow = flow
             st.sidebar.markdown(f"🔗 [Click here to connect Google Account]({auth_url})")
-            st.sidebar.info("After authorizing, paste the code below.")
+            st.sidebar.info("After authorizing, return to this app.")
             st.stop()
 
-        # Step 2: Ask for auth code after user visits link
-        auth_code = st.sidebar.text_input("🔑 Paste the authorization code here:")
+        query_params = st.experimental_get_query_params()
+        auth_code = query_params.get("code", [None])[0]
 
         if auth_code:
             try:
@@ -73,10 +70,8 @@ if not creds or not creds.valid:
                 del st.session_state["auth_flow"]
                 st.stop()
         else:
-            st.warning("Paste the code you get after login.")
+            st.warning("Waiting for Google authorization...")
             st.stop()
-
-
 
 # === Build GSC Service ===
 service = build("webmasters", "v3", credentials=creds)
