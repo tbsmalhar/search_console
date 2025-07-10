@@ -42,24 +42,42 @@ creds = None
 if os.path.exists("token.json"):
     creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        if "auth_flow" not in st.session_state:
-            flow = Flow.from_client_secrets_file(
-                "credentials.json",
-                scopes=SCOPES,
-                redirect_uri=REDIRECT_URI
-            )
-            auth_url, _ = flow.authorization_url(
-                prompt='consent',
-                include_granted_scopes='true'
-            )
-            st.session_state.auth_flow = flow
-            st.sidebar.markdown(f"[Click here to connect Google Account]({auth_url})")
-            st.sidebar.info("After authorizing, return to this app.")
-            st.stop()
+import urllib.parse
+
+query_params = st.query_params
+code = query_params.get("code", None)
+state = query_params.get("state", None)
+
+if not code:
+    flow = Flow.from_client_secrets_file(
+        "credentials.json",
+        scopes=SCOPES,
+        redirect_uri=REDIRECT_URI
+    )
+    auth_url, _ = flow.authorization_url(
+        prompt='consent',
+        include_granted_scopes='true'
+    )
+    st.sidebar.markdown(f"[Click here to connect Google Account]({auth_url})")
+    st.sidebar.info("After authorizing, return to this app.")
+    st.stop()
+else:
+    try:
+        flow = Flow.from_client_secrets_file(
+            "credentials.json",
+            scopes=SCOPES,
+            redirect_uri=REDIRECT_URI
+        )
+        # restore the same state
+        flow.fetch_token(authorization_response=st.query_params.url)
+        creds = flow.credentials
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+        st.success("✅ Successfully connected to Google Search Console!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"❌ Authentication failed: {e}")
+        st.stop()
 
         import urllib.parse
 
