@@ -48,23 +48,34 @@ if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else:
-        if st.sidebar.button("🔗 Connect to Google"):
-        flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-auth_url, _ = flow.authorization_url(prompt='consent')
+        # Step 1: Begin flow if not already started
+        if "auth_flow" not in st.session_state:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.session_state.auth_flow = flow
+            st.sidebar.markdown(f"🔗 [Click here to connect Google Account]({auth_url})")
+            st.sidebar.info("After authorizing, paste the code below.")
+            st.stop()
 
-st.markdown(f"🔐 [Click here to connect Google Account]({auth_url})")
-auth_code = st.text_input("🔑 Paste the authorization code here:")
+        # Step 2: Ask for auth code after user visits link
+        auth_code = st.sidebar.text_input("🔑 Paste the authorization code here:")
 
-if auth_code:
-    flow.fetch_token(code=auth_code)
-    creds = flow.credentials
-    with open("token.json", "w") as token:
-        token.write(creds.to_json())
-    st.success("✅ Connected to Google Search Console!")
-    st.experimental_rerun()
-else:
-    st.warning("Paste the code you get after authenticating.")
-    st.stop()
+        if auth_code:
+            try:
+                st.session_state.auth_flow.fetch_token(code=auth_code)
+                creds = st.session_state.auth_flow.credentials
+                with open("token.json", "w") as token:
+                    token.write(creds.to_json())
+                st.success("✅ Successfully connected to Google Search Console!")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"❌ Authentication failed: {e}")
+                del st.session_state["auth_flow"]
+                st.stop()
+        else:
+            st.warning("Paste the code you get after login.")
+            st.stop()
+
 
 
 # === Build GSC Service ===
