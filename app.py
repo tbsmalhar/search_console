@@ -31,7 +31,7 @@ if not os.path.exists("credentials.json"):
     st.stop()
 
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
-REDIRECT_URI = "http://localhost:8501"  # update this to match your deployment URL if hosted
+REDIRECT_URI = "https://searchconsole-evt75pdbx8syd6ifxk5ivx.streamlit.app"  # update this to match your deployment URL if hosted
 
 if st.sidebar.button("🔄 Disconnect Google Account"):
     if os.path.exists("token.json"):
