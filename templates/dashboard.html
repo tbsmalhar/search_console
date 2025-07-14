@@ -1,21 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Google Webmaster Dashboard</title>
+    <title>Google Search Console Integration</title>
 </head>
 <body>
-    <h2>Google Search Console Integration</h2>
+    <h1>Google Search Console Integration</h1>
+
     {% if websites %}
-        <h3>Verified Websites:</h3>
-        <ul>
-            {% for site in websites %}
-                <li>{{ site }}</li>
-            {% endfor %}
-        </ul>
+        <form method="POST" action="/analyze">
+            <label for="selected_site"><strong>Select a verified website:</strong></label><br><br>
+            <select name="selected_site" id="selected_site">
+                {% for site in websites %}
+                    <option value="{{ site }}">{{ site }}</option>
+                {% endfor %}
+            </select><br><br>
+            <button type="submit">🔍 Analyze GSC Data</button>
+        </form>
     {% else %}
-        <a href="{{ url_for('authorize') }}">
-            <button>Connect Google Search Console</button>
-        </a>
+        <p>🔗 No verified websites found. Please make sure your Google account has access.</p>
     {% endif %}
 </body>
 </html>
