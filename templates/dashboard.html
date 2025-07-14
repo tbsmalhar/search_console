@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Webmaster Dashboard</title>
+</head>
+<body>
+    <h2>Google Search Console Integration</h2>
+    {% if websites %}
+        <h3>Verified Websites:</h3>
+        <ul>
+            {% for site in websites %}
+                <li>{{ site }}</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <a href="{{ url_for('authorize') }}">
+            <button>Connect Google Search Console</button>
+        </a>
+    {% endif %}
+</body>
+</html>
