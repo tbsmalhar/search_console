@@ -4,7 +4,7 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from collections import defaultdict
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from dateutil import relativedelta
@@ -12,7 +12,7 @@ from nltk.corpus import stopwords
 from fuzzywuzzy import fuzz
 import nltk
 
-# Ensure stopwords are downloaded
+# Ensure stopwords are available
 try:
     nltk.data.find('corpora/stopwords')
 except LookupError:
@@ -20,110 +20,59 @@ except LookupError:
 
 # === Streamlit Config ===
 st.set_page_config(page_title="GSC Analyzer", layout="wide")
-st.title("📊 Google Search Console Keyword Optimizer")
+st.title("📊 Google Search Console Keyword Analyzer")
 
+# === Sidebar Config ===
 st.sidebar.header("🔐 Google Login & Setup")
+
+# Max result slider
 MAX_RESULTS = st.sidebar.slider("Max rows to analyze", 5, 100, 10)
 
-# === Google Auth ===
+# === Google Auth Flow ===
 if not os.path.exists("credentials.json"):
-    st.error("❌ 'credentials.json' file is missing.")
+    st.error("❌ 'credentials.json' file is missing in the current folder.")
     st.stop()
 
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
-REDIRECT_URI = "https://searchconsole-evt75pdbx8syd6ifxk5ivx.streamlit.app"  # update this to match your deployment URL if hosted
-
-if st.sidebar.button("🔄 Disconnect Google Account"):
-    if os.path.exists("token.json"):
-        os.remove("token.json")
-    st.rerun()
-
 creds = None
+
 if os.path.exists("token.json"):
     creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-import urllib.parse
-
-query_params = st.query_params
-code = query_params.get("code", None)
-state = query_params.get("state", None)
-
-if not code:
-    flow = Flow.from_client_secrets_file(
-        "credentials.json",
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI
-    )
-    auth_url, _ = flow.authorization_url(
-        prompt='consent',
-        include_granted_scopes='true'
-    )
-    st.sidebar.markdown(f"[🔗 Click here to connect Google Account]({auth_url})")
-    st.sidebar.info("After authorizing, return to this app.")
-    st.stop()
-else:
-    try:
-        # Rebuild flow again with the same redirect URI
-        flow = Flow.from_client_secrets_file(
-            "credentials.json",
-            scopes=SCOPES,
-            redirect_uri=REDIRECT_URI
-        )
-
-        # Rebuild full URL with code and state
-        full_redirect_url = REDIRECT_URI + "?" + urllib.parse.urlencode(query_params, doseq=True)
-
-        # Now fetch the token using the full URL
-        flow.fetch_token(authorization_response=full_redirect_url)
-
-        creds = flow.credentials
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
-
-        st.success("✅ Successfully connected to Google Search Console!")
-        st.rerun()
-    except Exception as e:
-        st.error(f"❌ Authentication failed: {e}")
-        st.stop()
-
-
-        import urllib.parse
-
-        query_string = urllib.parse.urlencode(st.query_params, doseq=True)
-        redirect_url = f"{REDIRECT_URI}?{query_string}"
-
-        try:
-            st.session_state.auth_flow.fetch_token(authorization_response=redirect_url)
-            creds = st.session_state.auth_flow.credentials
+if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        if st.sidebar.button("🔗 Connect to Google"):
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
             with open("token.json", "w") as token:
                 token.write(creds.to_json())
-            st.success("✅ Successfully connected to Google Search Console!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Authentication failed: {e}")
-            del st.session_state["auth_flow"]
-            st.stop()
-
         else:
-            st.warning("Waiting for Google authorization...")
+            st.warning("Please click 'Connect to Google' to authorize.")
             st.stop()
 
-# === Build GSC Service ===
+# === Build API service ===
 service = build("webmasters", "v3", credentials=creds)
+
+# === Get list of verified sites ===
 site_list = service.sites().list().execute()
 verified_sites = [s["siteUrl"] for s in site_list.get("siteEntry", []) if s.get("permissionLevel") == "siteFullUser"]
 
 if not verified_sites:
-    st.error("No verified GSC properties found.")
+    st.error("❌ No verified GSC properties found.")
     st.stop()
 
+# === Site selection ===
 selected_site = st.sidebar.selectbox("🌐 Select a GSC Property", verified_sites)
 st.success(f"✅ Connected to: {selected_site}")
 
-# === GSC Query ===
+# === Date Range for GSC ===
 end_date = datetime.date.today()
 start_date = end_date - relativedelta.relativedelta(months=16)
 home_regex = f"^{selected_site}$"
+branded_queries = "natzir|analistaseo|analista seo"
+
 request_body = {
     "startDate": start_date.strftime("%Y-%m-%d"),
     "endDate": end_date.strftime("%Y-%m-%d"),
@@ -131,18 +80,24 @@ request_body = {
     "dimensionFilterGroups": [{
         "filters": [
             {"dimension": "page", "operator": "excludingRegex", "expression": home_regex},
-            {"dimension": "query", "operator": "excludingRegex", "expression": "natzir|analistaseo|analista seo"}
+            {"dimension": "query", "operator": "excludingRegex", "expression": branded_queries}
         ]
     }],
     "rowLimit": 25000
 }
 
-response = service.searchanalytics().query(siteUrl=selected_site, body=request_body).execute()
-rows = response.get("rows", [])
-if not rows:
-    st.warning("No data found.")
+# === Fetch GSC Data ===
+try:
+    response = service.searchanalytics().query(siteUrl=selected_site, body=request_body).execute()
+    rows = response.get("rows", [])
+    if not rows:
+        st.warning("No data found for the selected property.")
+        st.stop()
+except Exception as e:
+    st.error(f"Error fetching GSC data: {e}")
     st.stop()
 
+# === Parse into DataFrame ===
 data = defaultdict(list)
 for row in rows:
     keys = row.get("keys", [])
@@ -157,6 +112,8 @@ df["ctr"] *= 100
 df["impressions"] = df["impressions"].astype(int)
 df["position"] = df["position"].round(2)
 df = df.sort_values("clicks", ascending=False).drop_duplicates("page").head(MAX_RESULTS)
+
+st.info(f"🔍 Loaded {len(df)} rows from GSC.")
 
 # === Metadata Extraction ===
 def get_meta(url):
@@ -174,7 +131,7 @@ def get_meta(url):
 
 df[["title", "meta", "h1"]] = pd.DataFrame(df["page"].apply(get_meta).tolist(), index=df.index)
 
-# === Clean Text ===
+# === Clean Text for Fuzzy Match ===
 lang = "spanish"
 stop_words = set(stopwords.words(lang))
 
@@ -186,62 +143,17 @@ def clean_text(text):
 for col in ["title", "meta", "h1", "query"]:
     df[f"{col}_clean"] = df[col].apply(clean_text)
 
+# === Fuzzy Matching ===
 for col in ["title", "meta", "h1"]:
     df[f"{col}_similarity"] = df.apply(
         lambda row: fuzz.token_set_ratio(row["query_clean"], row[f"{col}_clean"]), axis=1)
 
+# Drop temporary _clean columns
 df.drop(columns=[col for col in df.columns if col.endswith("_clean")], inplace=True)
 
-# === Tabs ===
-tab1, tab2 = st.tabs(["📊 GSC Data", "🧠 AI Suggestions"])
+# === Display Results ===
+st.subheader("📋 Results Table")
+st.dataframe(df, use_container_width=True)
 
-with tab1:
-    st.dataframe(df, use_container_width=True)
-
-with tab2:
-    st.subheader("🧠 AI Content Suggestions")
-    openai_key = st.text_input("🔑 Enter your OpenAI API key", type="password")
-    generate_btn = st.button("🚀 Generate AI Optimized Content")
-
-    if openai_key and generate_btn:
-        from openai import OpenAI
-        client = OpenAI(api_key=openai_key)
-
-        def generar(prompt):
-            try:
-                return client.chat.completions.create(
-                    model="gpt-4o",
-                    temperature=0.0,
-                    messages=[{"role": "user", "content": prompt}]
-                ).choices[0].message.content.strip()
-            except Exception as e:
-                return f"Error: {e}"
-
-        PROMPTS = {
-            "new_title": "Generate title under 60 chars in {lang}, include '{query}', no repetition. Use: '{title}'",
-            "new_meta": "Generate meta under 160 chars in {lang}, include '{query}', engaging. Use: '{meta}'",
-            "new_h1": "Generate H1 under 70 chars in {lang}, include '{query}'. Use: '{h1}'"
-        }
-
-        filtered_df = df[df["title_similarity"] <= 60].copy()
-        st.info(f"Found {len(filtered_df)} rows with low title similarity")
-
-        for idx, row in filtered_df.iterrows():
-            query = row["query"]
-            for field, template in PROMPTS.items():
-                base_col = field.replace("new_", "")
-                prompt = template.format(query=query, lang="English", **{base_col: row[base_col]})
-                df.at[idx, field] = generar(prompt)
-
-        def strip_quotes(text):
-            return text[1:-1] if isinstance(text, str) and text.startswith('"') and text.endswith('"') else text
-
-        for col in ["new_title", "new_meta", "new_h1"]:
-            df[col] = df[col].apply(strip_quotes)
-
-        st.success("✅ AI content generated!")
-        st.dataframe(df[df["new_title"].notnull()][['query', 'page', 'title', 'new_title', 'meta', 'new_meta', 'h1', 'new_h1']], use_container_width=True)
-        st.download_button("⬇ Download Enhanced CSV", df.to_csv(index=False), "gsc_optimized.csv", "text/csv")
-
-    elif generate_btn and not openai_key:
-        st.warning("⚠ Please enter your OpenAI API key.")
+# Download Button
+st.download_button("⬇ Download CSV", df.to_csv(index=False), "gsc_data.csv", mime="text/csv")
