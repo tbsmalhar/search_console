@@ -5,6 +5,7 @@ google-auth==2.29.0
 google-auth-oauthlib==1.2.0
 
 # Additional required libraries based on your code
+streamlit
 pandas
 requests
 beautifulsoup4
@@ -12,3 +13,4 @@ chardet
 python-dateutil
 nltk
 fuzzywuzzy
+
