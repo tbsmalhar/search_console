@@ -1,11 +1,16 @@
+Flask==3.0.3
+gunicorn==21.2.0
+google-api-python-client==2.127.0
+google-auth==2.29.0
+google-auth-oauthlib==1.2.0
+
+# Additional required libraries based on your code
 streamlit
 pandas
-google-auth
-google-auth-oauthlib
-google-api-python-client
 requests
 beautifulsoup4
 chardet
-fuzzywuzzy
-python-Levenshtein
+python-dateutil
 nltk
+fuzzywuzzy
+
