@@ -39,15 +39,31 @@ creds = None
 if os.path.exists("token.json"):
     creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
+from google_auth_oauthlib.flow import InstalledAppFlow
+
 if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else:
         if st.sidebar.button("🔗 Connect to Google"):
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            creds = flow.run_console()
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.markdown(f"🔗 [Click here to authorize Google Account]({auth_url})")
+            auth_code = st.text_input("Paste the authorization code here:")
+            if auth_code:
+                try:
+                    flow.fetch_token(code=auth_code)
+                    creds = flow.credentials
+                    with open("token.json", "w") as token:
+                        token.write(creds.to_json())
+                    st.success("✅ Connected successfully!")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"❌ Authentication failed: {e}")
+                    st.stop()
+            else:
+                st.warning("Please paste the authorization code to continue.")
+                st.stop()
         else:
             st.warning("Please click 'Connect to Google' to authorize.")
             st.stop()
